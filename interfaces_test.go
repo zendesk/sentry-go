@@ -178,3 +178,79 @@ func TestStructSnapshots(t *testing.T) {
 		})
 	}
 }
+
+func TestRequestMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name string
+		req  Request
+		want []byte
+	}{
+		{
+			name: "Empty",
+			req:  Request{},
+			want: []byte(`{}`),
+		},
+		{
+			name: "GET",
+			req: Request{
+				URL:    "https://sentry.io/",
+				Method: "GET",
+				Headers: map[string]string{
+					"User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0",
+				},
+			},
+			want: []byte(`{"url":"https://sentry.io/","method":"GET","headers":{"User-Agent":"Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"}}`),
+		},
+		{
+			name: "POST",
+			req: Request{
+				URL:    "https://sentry.io/",
+				Method: "POST",
+				Data:   string([]byte{0, 1, 2, 3, 4}),
+				Headers: map[string]string{
+					"User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0",
+				},
+			},
+			want: []byte(`{"url":"https://sentry.io/","method":"POST","data":"\u0000\u0001\u0002\u0003\u0004","headers":{"User-Agent":"Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"}}`),
+		},
+		{
+			name: "POST JSON",
+			req: Request{
+				URL:    "https://sentry.io/",
+				Method: "POST",
+				Data:   `{"hello":"world"}`,
+				Headers: map[string]string{
+					"User-Agent":   "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0",
+					"Content-Type": "application/json",
+				},
+			},
+			want: []byte(`{"url":"https://sentry.io/","method":"POST","headers":{"Content-Type":"application/json","User-Agent":"Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"},"data":{"hello":"world"}}`),
+		},
+		{
+			name: "POST JSON charset", // ensure "Content-Type: application/json; charset=utf-8" is handled the same as when no charset is given
+			req: Request{
+				URL:    "https://sentry.io/",
+				Method: "POST",
+				Data:   `{"hello":"world"}`,
+				Headers: map[string]string{
+					"User-Agent":   "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0",
+					"Content-Type": "application/json; charset=utf-8",
+				},
+			},
+			want: []byte(`{"url":"https://sentry.io/","method":"POST","headers":{"Content-Type":"application/json; charset=utf-8","User-Agent":"Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"},"data":{"hello":"world"}}`),
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tt.req.experimentDecodeJSONData = true
+			got, err := json.Marshal(&tt.req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("Payload mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

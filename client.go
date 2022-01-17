@@ -191,6 +191,15 @@ type ClientOptions struct {
 	HTTPSProxy string
 	// An optional set of SSL certificates to use.
 	CaCerts *x509.CertPool
+	// ExperimentDecodeJSONData is an experimental feature and is subject to
+	// change in a future release. When set to true, reporting events
+	// containing a request with JSON body will send the body inline within
+	// the event, instead of as a JSON string. If the body cannot be parsed,
+	// it is still sent as a string as if this feature was turned off. This
+	// feature is a stopgap workaround to address limitations on server-side
+	// scrubbing of event data, see
+	// https://github.com/getsentry/sentry-go/issues/404.
+	ExperimentDecodeJSONData bool
 }
 
 // Client is the underlying processor that is used by the main API and Hub
@@ -604,6 +613,9 @@ func (client *Client) prepareEvent(event *Event, hint *EventHint, scope EventMod
 		if event == nil {
 			return nil
 		}
+	}
+	if client.options.ExperimentDecodeJSONData && event.Request != nil {
+		event.Request.experimentDecodeJSONData = true
 	}
 
 	for _, processor := range client.eventProcessors {

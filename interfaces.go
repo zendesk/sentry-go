@@ -108,6 +108,12 @@ type Request struct {
 	Cookies     string            `json:"cookies,omitempty"`
 	Headers     map[string]string `json:"headers,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
+
+	// experimentDecodeJSONData is an experimental flag. If true,
+	// Request.MarshalJSON will attempt to parse Data and marshal it as a
+	// plain JSON value when the Request Content-Type indicates that Data is
+	// in JSON format.
+	experimentDecodeJSONData bool
 }
 
 // NewRequest returns a new Sentry Request from the given http.Request.
@@ -146,6 +152,49 @@ func NewRequest(r *http.Request) *Request {
 		Headers:     headers,
 		Env:         env,
 	}
+}
+
+func (r *Request) MarshalJSON() ([]byte, error) {
+	// request aliases Request to allow calling json.Marshal without an
+	// infinite loop. It preserves all fields while none of the attached
+	// methods.
+	type request Request
+
+	if data, ok := r.tryUnmarshalJSONData(); ok {
+		return json.Marshal(struct {
+			// Embed all of the fields of Request.
+			*request
+			// Data shadows the original Data field and is
+			// used to send raw JSON instead of a string.
+			Data json.RawMessage `json:"data,omitempty"`
+		}{
+			request: (*request)(r),
+			Data:    data,
+		})
+	}
+	return json.Marshal((*request)(r))
+}
+
+func (r *Request) tryUnmarshalJSONData() (data json.RawMessage, ok bool) {
+	var err error
+	if !r.experimentDecodeJSONData {
+		return nil, false
+	}
+	contentType := r.Headers["Content-Type"]
+	// Strip away "; charset=utf-8" and the like.
+	if i := strings.Index(contentType, ";"); i > 0 {
+		contentType = contentType[0:i]
+		contentType = strings.TrimSpace(contentType)
+	}
+	if contentType != "application/json" {
+		return nil, false
+	}
+	err = json.Unmarshal([]byte(r.Data), &data)
+	if err != nil {
+		// Invalid JSON, ignore error.
+		return nil, false
+	}
+	return data, true
 }
 
 // Exception specifies an error that occurred.
