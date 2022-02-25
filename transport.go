@@ -56,8 +56,7 @@ func getTLSConfig(options ClientOptions) *tls.Config {
 		//#nosec G402 -- We should be using `MinVersion: tls.VersionTLS12`,
 		// 				 but we don't want to break peoples code without the major bump.
 		return &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			RootCAs:    options.CaCerts,
+			RootCAs: options.CaCerts,
 		}
 	}
 
